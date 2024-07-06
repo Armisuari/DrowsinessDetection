@@ -1,26 +1,54 @@
 from flask import Flask, render_template, Response
 import cv2
 from drowsiness_detection import DrowsinessDetector
+from threading import Thread, Lock
+import time
+
+class VideoCamera:
+    def __init__(self):
+        self.video = cv2.VideoCapture(0)
+        self.lock = Lock()
+        self.frame = None
+        self.stopped = False
+        self.detector = DrowsinessDetector()
+        self.thread = Thread(target=self.update, args=())
+        self.thread.daemon = True
+        self.thread.start()
+
+    def update(self):
+        while not self.stopped:
+            ret, frame = self.video.read()
+            if not ret:
+                continue
+            
+            # Reduce the frame size for better performance
+            frame = cv2.resize(frame, (320, 240))
+            processed_frame = self.detector.process_frame(frame)
+            
+            with self.lock:
+                self.frame = processed_frame
+            
+            time.sleep(0.033)  # Limit to ~30 FPS
+
+    def read(self):
+        with self.lock:
+            frame = self.frame.copy()
+        return frame
+
+    def __del__(self):
+        self.stopped = True
+        self.video.release()
 
 app = Flask(__name__)
-
-detector = DrowsinessDetector()
+camera = VideoCamera()
 
 def generate_frames():
-    vs = cv2.VideoCapture(0)
-    
     while True:
-        ret, frame = vs.read()
-        if not ret:
-            break
-
-        frame = detector.process_frame(frame)
+        frame = camera.read()
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-    vs.release()
 
 @app.route('/')
 def index():

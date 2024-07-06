@@ -5,7 +5,7 @@ from scipy.spatial import distance as dist
 
 class DrowsinessDetector:
     def __init__(self):
-        self.EYE_AR_THRESH = 0.3
+        self.EYE_AR_THRESH = 0.25
         self.EYE_AR_CONSEC_FRAMES = 48
         self.COUNTER = 0
         self.ALARM_ON = False
@@ -42,16 +42,26 @@ class DrowsinessDetector:
             if ear < self.EYE_AR_THRESH:
                 self.COUNTER += 1
                 if self.COUNTER >= self.EYE_AR_CONSEC_FRAMES:
-                    if not self.ALARM_ON:
-                        self.ALARM_ON = True
-                        cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    self.ALARM_ON = True
             else:
                 self.COUNTER = 0
                 self.ALARM_ON = False
 
-            cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # Display EAR value in red color
+            cv2.putText(frame, f"EAR: {ear:.2f}", (10, frame.shape[0] - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+            # Display EYE_AR_THRESH in blue color
+            cv2.putText(frame, f"THRESH: {self.EYE_AR_THRESH:.2f}", (10, frame.shape[0] - 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+
+            # Display EYE_AR_CONSEC_FRAMES counter in green color
+            cv2.putText(frame, f"COUNTER: {self.COUNTER}", (10, frame.shape[0] - 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+            if self.ALARM_ON:
+                cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             leftEyeHull = cv2.convexHull(leftEye)
             rightEyeHull = cv2.convexHull(rightEye)
@@ -63,25 +73,3 @@ class DrowsinessDetector:
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         return frame
-
-def main():
-    print("[INFO] starting video stream...")
-    detector = DrowsinessDetector()
-    vs = cv2.VideoCapture(0)
-    
-    while True:
-        ret, frame = vs.read()
-        if not ret:
-            break
-
-        frame = detector.process_frame(frame)
-        cv2.imshow("Frame", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
-            break
-
-    vs.release()
-    cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    main()
