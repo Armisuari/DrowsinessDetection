@@ -4,13 +4,19 @@ import cv2
 from drowsiness_detection import DrowsinessDetector
 from threading import Thread, Lock
 import time
-import RPi.GPIO as GPIO  # Import RPi.GPIO for GPIO control
+import RPi.GPIO as GPIO
 
-# GPIO setup
+# GPIO setup for buzzer
 BUZZER_PIN = 17  # GPIO pin connected to the buzzer
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUZZER_PIN, GPIO.OUT)
 GPIO.output(BUZZER_PIN, GPIO.LOW)  # Ensure buzzer is off initially
+
+# GPIO setup for servo
+SERVO_PIN = 24  # GPIO pin connected to the servo
+GPIO.setup(SERVO_PIN, GPIO.OUT)
+servo = GPIO.PWM(SERVO_PIN, 50)  # 50Hz PWM frequency
+servo.start(7.5)  # Neutral position
 
 class VideoCamera:
     def __init__(self):
@@ -23,6 +29,7 @@ class VideoCamera:
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
         self.thread.start()
+        self.servo_angle = 90  # Initialize servo angle at the center
 
     def update(self):
         while not self.stopped:
@@ -30,9 +37,8 @@ class VideoCamera:
             if not ret:
                 continue
             
-            # Reduce the frame size for better performance
             frame = cv2.resize(frame, (720, 480))
-            processed_frame, alert = self.detector.process_frame(frame)
+            processed_frame, alert, face_position = self.detector.process_frame(frame)
             
             with self.lock:
                 self.frame = processed_frame
@@ -45,6 +51,10 @@ class VideoCamera:
                 self.buzzer_blinking = False
                 GPIO.output(BUZZER_PIN, GPIO.LOW)  # Turn buzzer off
             
+            # Adjust servo based on face position
+            if face_position is not None:
+                self.adjust_servo(face_position[0], frame.shape[1])
+            
             time.sleep(0.033)  # Limit to ~30 FPS
 
     def blink_buzzer(self):
@@ -53,6 +63,22 @@ class VideoCamera:
             time.sleep(0.1)  # Buzzer on for 100 ms
             GPIO.output(BUZZER_PIN, GPIO.LOW)
             time.sleep(0.1)  # Buzzer off for 100 ms
+
+    def adjust_servo(self, face_x, frame_width):
+        # Calculate the deviation of the face from the center
+        error = face_x - frame_width / 2
+        
+        # Proportional control: Adjust the servo angle based on the error
+        kp = 0.1  # Proportional gain (tune this value as needed)
+        adjustment = kp * error
+        self.servo_angle -= adjustment
+        
+        # Clamp the servo angle to the valid range (0 to 180 degrees)
+        self.servo_angle = max(0, min(180, self.servo_angle))
+        
+        # Convert the angle to duty cycle
+        duty_cycle = 2.5 + (self.servo_angle / 18)
+        servo.ChangeDutyCycle(duty_cycle)
 
     def read(self):
         with self.lock:
@@ -65,6 +91,7 @@ class VideoCamera:
     def __del__(self):
         self.stopped = True
         self.video.release()
+        servo.stop()
         GPIO.cleanup()  # Clean up GPIO settings
 
 camera = VideoCamera()
