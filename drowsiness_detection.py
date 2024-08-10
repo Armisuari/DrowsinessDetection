@@ -33,7 +33,7 @@ class DrowsinessDetector:
     def process_frame(self, frame):
         current_time = time.time()
         if current_time - self.last_frame_time < self.frame_interval:
-            return frame
+            return frame, False, None  # Return None for face_position if the frame is skipped
 
         self.last_frame_time = current_time
 
@@ -45,6 +45,7 @@ class DrowsinessDetector:
 
         # Detect faces
         rects = self.detector(gray, 0)
+        face_position = None  # Initialize face position as None
 
         for rect in rects:
             shape = self.predictor(gray, rect)
@@ -63,7 +64,6 @@ class DrowsinessDetector:
             else:
                 self.COUNTER = 0
                 self.COUNTER_OPEN += 1
-                # self.ALARM_ON = False
                 
             if self.COUNTER >= self.EYE_AR_CONSEC_FRAMES:
                 self.COUNTER_AFTER += 1
@@ -75,19 +75,17 @@ class DrowsinessDetector:
             if self.COUNTER_AFTER >= self.COUNTER_AFTER_LIMIT:
                 self.ALARM_ON = True
 
-            # Display EAR value in red color
+            # Get the X coordinate of the face's position
+            (x, y, w, h) = face_utils.rect_to_bb(rect)
+            face_position = (x + w // 2, y + h // 2)  # Center of the face
+
+            # Display EAR and other debugging information
             cv2.putText(frame, f"EAR: {ear:.2f}", (10, frame.shape[0] - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-
-            # Display EYE_AR_THRESH in blue color
             cv2.putText(frame, f"THRESH: {self.EYE_AR_THRESH:.2f}", (10, frame.shape[0] - 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
-            # Display EYE_AR_CONSEC_FRAMES counter in green color
             cv2.putText(frame, f"COUNTER: {self.COUNTER}", (10, frame.shape[0] - 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-            
-            # Display COUNTE_AFTER counter in green color
             cv2.putText(frame, f"COUNTER AFTER: {self.COUNTER_AFTER}", (10, frame.shape[0] - 90),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
@@ -101,7 +99,6 @@ class DrowsinessDetector:
             cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
 
             # Draw a rectangle around the face
-            (x, y, w, h) = face_utils.rect_to_bb(rect)
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        return frame, self.ALARM_ON
+        return frame, self.ALARM_ON, face_position  # Return face_position with X, Y coordinates
