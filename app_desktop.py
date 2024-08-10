@@ -19,6 +19,7 @@ class VideoCamera:
         self.frame = None
         self.stopped = False
         self.detector = DrowsinessDetector()
+        self.buzzer_blinking = False  # Flag to control buzzer blinking
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
         self.thread.start()
@@ -30,7 +31,6 @@ class VideoCamera:
                 continue
             
             # Reduce the frame size for better performance
-            # frame = cv2.resize(frame, (320, 240))
             frame = cv2.resize(frame, (720, 480))
             processed_frame, alert = self.detector.process_frame(frame)
             
@@ -38,12 +38,21 @@ class VideoCamera:
                 self.frame = processed_frame
                 
             # Trigger buzzer if alert is true
-            if alert:
-                GPIO.output(BUZZER_PIN, GPIO.HIGH)  # Turn buzzer on
-            else:
-                GPIO.output(BUZZER_PIN, GPIO.LOW)   # Turn buzzer off
+            if alert and not self.buzzer_blinking:
+                self.buzzer_blinking = True
+                Thread(target=self.blink_buzzer).start()
+            elif not alert:
+                self.buzzer_blinking = False
+                GPIO.output(BUZZER_PIN, GPIO.LOW)  # Turn buzzer off
             
             time.sleep(0.033)  # Limit to ~30 FPS
+
+    def blink_buzzer(self):
+        while self.buzzer_blinking:
+            GPIO.output(BUZZER_PIN, GPIO.HIGH)
+            time.sleep(0.1)  # Buzzer on for 100 ms
+            GPIO.output(BUZZER_PIN, GPIO.LOW)
+            time.sleep(0.1)  # Buzzer off for 100 ms
 
     def read(self):
         with self.lock:
